@@ -62,11 +62,21 @@ function getUser(): User {
 
 // 4. 参数越少越好：使用对象参数与类型别名
 // Bad
-function createMenu1(title: string, body: string, buttonText: string, cancellable: boolean) {
+function createMenu1(
+  title: string,
+  body: string,
+  buttonText: string,
+  cancellable: boolean
+) {
   /* ... */
 }
 // Good
-type MenuOptions = { title: string; body: string; buttonText: string; cancellable: boolean };
+type MenuOptions = {
+  title: string;
+  body: string;
+  buttonText: string;
+  cancellable: boolean;
+};
 function createMenu(options: MenuOptions) {
   /* ... */
 }
@@ -127,15 +137,20 @@ function showEmployeeList(employees: (Developer | Manager)[]) {
 // 7. 使用 Object.assign 或解构设置默认对象（避免副作用，不允许显式 undefined/null）
 // Bad: 逐个判断赋值
 function createMenuConfig1(config: any) {
-  config.title = config.title || 'Foo';
+  config.title = config.title || "Foo";
   // ...
 }
 // Good: 解构默认值
-type MenuConfig = { title?: string; body?: string; buttonText?: string; cancellable?: boolean };
+type MenuConfig = {
+  title?: string;
+  body?: string;
+  buttonText?: string;
+  cancellable?: boolean;
+};
 function createMenuConfig({
-  title = 'Foo',
-  body = 'Bar',
-  buttonText = 'Baz',
+  title = "Foo",
+  body = "Bar",
+  buttonText = "Baz",
   cancellable = true,
 }: MenuConfig) {
   // 直接使用 title ...
@@ -157,12 +172,12 @@ function createTempFile(name: string) {
 
 // 9. 避免副作用 (纯函数 + 不可变数据)
 // Bad: 直接修改全局变量
-let name1 = 'Robert C. Martin';
+let name1 = "Robert C. Martin";
 function toBase641() {
   name1 = btoa(name1);
 }
 // Good: 返回新值，不改变输入
-const name = 'Robert C. Martin';
+const name = "Robert C. Martin";
 function toBase64(text: string): string {
   return btoa(text);
 }
@@ -191,7 +206,8 @@ class MyArray<T> extends Array<T> {
 // Bad: 手动 for 循环累加
 const contributions = [{ linesOfCode: 500 }, { linesOfCode: 1500 }];
 let total1 = 0;
-for (let i = 0; i < contributions.length; i++) total1 += contributions[i].linesOfCode;
+for (let i = 0; i < contributions.length; i++)
+  total1 += contributions[i].linesOfCode;
 // Good: 使用 reduce
 const total = contributions.reduce((sum, c) => sum + c.linesOfCode, 0);
 
@@ -223,7 +239,7 @@ class Airplane1 {
   type: string;
   getCruisingAltitude() {
     switch (this.type) {
-      case '777':
+      case "777":
         return this.getMaxAltitude() - this.getPassengerCount();
       // ...
     }
@@ -252,7 +268,7 @@ interface Vehicle {
   move(origin: Location, dest: Location): void;
 }
 function travelToTexas(vehicle: Vehicle) {
-  vehicle.move(currentLocation, new Location('texas'));
+  vehicle.move(currentLocation, new Location("texas"));
 }
 
 // 14. 不要过度优化 + 删除无用代码
@@ -272,7 +288,8 @@ for (let i = 0; i < list.length; i++) {
 // Bad: 一次性生成全部斐波那契数列
 function fibonacci1(n: number): number[] {
   const items = [0, 1];
-  while (items.length < n) items.push(items[items.length - 2] + items[items.length - 1]);
+  while (items.length < n)
+    items.push(items[items.length - 2] + items[items.length - 1]);
   return items;
 }
 // Good: 使用生成器，按需产生
@@ -305,7 +322,7 @@ class BankAccount {
     return this._balance;
   }
   set balance(value: number) {
-    if (value < 0) throw new Error('Cannot set negative balance.');
+    if (value < 0) throw new Error("Cannot set negative balance.");
     this._balance = value;
   }
 }
@@ -386,10 +403,7 @@ class UserNotifier {
 // Good: Employee 持有 EmployeeTaxData 实例
 class Employee {
   private taxData: EmployeeTaxData;
-  constructor(
-    private name: string,
-    private email: string,
-  ) {}
+  constructor(private name: string, private email: string) {}
   setTaxData(ssn: string, salary: number): this {
     this.taxData = new EmployeeTaxData(ssn, salary);
     return this;
@@ -511,10 +525,7 @@ abstract class Shape {
   abstract getArea(): number;
 }
 class Rectangle extends Shape {
-  constructor(
-    private w: number,
-    private h: number,
-  ) {
+  constructor(private w: number, private h: number) {
     super();
   }
   getArea() {
@@ -540,10 +551,10 @@ interface AllInOnePrinter {
 class EconomicPrinter1 implements AllInOnePrinter {
   print() {}
   fax() {
-    throw new Error('Not supported');
+    throw new Error("Not supported");
   }
   scan() {
-    throw new Error('Not supported');
+    throw new Error("Not supported");
   }
 }
 // Good: 拆分为小接口，按需实现
@@ -565,7 +576,7 @@ class EconomicPrinter implements Printer {
 class ReportReader1 {
   private formatter = new XmlFormatter();
   async read(path: string) {
-    const text = await readFile(path, 'utf8');
+    const text = await readFile(path, "utf8");
     return this.formatter.parse(text);
   }
 }
@@ -586,7 +597,7 @@ class JsonFormatter implements Formatter {
 class ReportReader {
   constructor(private formatter: Formatter) {}
   async read(path: string) {
-    const text = await readFile(path, 'utf8');
+    const text = await readFile(path, "utf8");
     return this.formatter.parse(text);
   }
 }
@@ -596,17 +607,17 @@ class ReportReader {
 
 // 24. 每个测试一个概念 + 用例名称显示意图
 // Bad: 一个 test 包含多个断言且名称模糊
-describe('AwesomeDate', () => {
-  it('handles date boundaries', () => {
+describe("AwesomeDate", () => {
+  it("handles date boundaries", () => {
     // 多个 assert，失败难以定位
   });
 });
 // Good: 一个测试只验证一种场景，名称具体
-describe('AwesomeDate', () => {
-  it('should handle 30-day months', () => {
+describe("AwesomeDate", () => {
+  it("should handle 30-day months", () => {
     /* single assert */
   });
-  it('should handle leap year', () => {
+  it("should handle leap year", () => {
     /* ... */
   });
 });
@@ -615,15 +626,19 @@ describe('AwesomeDate', () => {
 
 // 25. 用 Promises 替代回调，用 async/await 替代 Promise 链
 // Bad: 回调地狱
-import { get } from 'request';
-function downloadPage1(url: string, saveTo: string, cb: (err: Error, content?: string) => void) {
+import { get } from "request";
+function downloadPage1(
+  url: string,
+  saveTo: string,
+  cb: (err: Error, content?: string) => void
+) {
   get(url, (err, res) => {
     /* ... */
   });
 }
 // Good: Promise + async/await
-import { promisify } from 'util';
-const writeFileAsync = promisify(require('fs').writeFile);
+import { promisify } from "util";
+const writeFileAsync = promisify(require("fs").writeFile);
 async function downloadPage(url: string, saveTo: string): Promise<string> {
   const response = await getAsync(url); // 假设 getAsync 返回 Promise
   await writeFileAsync(saveTo, response);
@@ -635,7 +650,7 @@ async function downloadPage(url: string, saveTo: string): Promise<string> {
 // 26. 抛出 Error 对象 + 捕获并记录，不忽略
 // Bad: 抛出字符串，或吞掉异常
 function calculateTotal1(): number {
-  throw 'Not implemented';
+  throw "Not implemented";
 }
 try {
   riskyOp();
@@ -645,7 +660,7 @@ try {
 getUser().catch((e) => console.log(e)); // 未处理
 // Good: 抛出 Error，捕获后使用 logger，并向上传递或恰当处理
 function calculateTotal(): number {
-  throw new Error('Not implemented');
+  throw new Error("Not implemented");
 }
 try {
   riskyOp();
@@ -698,15 +713,15 @@ class PerformanceReview {
 
 // 导入分组与别名（需 tsconfig 配置 paths）
 // Bad: 顺序混乱
-import { TypeDefinition } from '../types/typeDefinition';
-import fs from 'fs';
-import { BindingScopeEnum } from 'inversify';
-import 'reflect-metadata';
+import { TypeDefinition } from "../types/typeDefinition";
+import fs from "fs";
+import { BindingScopeEnum } from "inversify";
+import "reflect-metadata";
 // Good: 分组有序（polyfill -> node -> 外部 -> 内部 -> 相对）
-import 'reflect-metadata';
-import fs from 'fs';
-import { BindingScopeEnum } from 'inversify';
-import { TypeDefinition } from '@types/typeDefinition'; // 使用别名代替长路径
+import "reflect-metadata";
+import fs from "fs";
+import { BindingScopeEnum } from "inversify";
+import { TypeDefinition } from "@types/typeDefinition"; // 使用别名代替长路径
 
 // ----------------------------- 注释 -----------------------------
 

@@ -8,12 +8,12 @@
  * Usage: npx tsx tools/lint-bdd.ts
  */
 
-import type { CallExpression, PropertyAccessExpression } from 'ts-morph';
-import { Project, SyntaxKind } from 'ts-morph';
-import ts from 'typescript';
+import type { CallExpression, PropertyAccessExpression } from "ts-morph";
+import { Project, SyntaxKind } from "ts-morph";
+import ts from "typescript";
 
-const project = new Project({ tsConfigFilePath: 'tsconfig.json' });
-const CWD = process.cwd().replace(/\\/g, '/');
+const project = new Project({ tsConfigFilePath: "tsconfig.json" });
+const CWD = process.cwd().replace(/\\/g, "/");
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -23,13 +23,13 @@ function is_it_call(node: CallExpression): boolean {
   const kind = callee.getKind();
 
   if (kind === SyntaxKind.Identifier) {
-    return callee.getText() === 'it';
+    return callee.getText() === "it";
   }
 
   if (kind === SyntaxKind.PropertyAccessExpression) {
     const prop = callee as PropertyAccessExpression;
     const obj = prop.getExpression();
-    return obj.getKind() === SyntaxKind.Identifier && obj.getText() === 'it';
+    return obj.getKind() === SyntaxKind.Identifier && obj.getText() === "it";
   }
 
   // Handle it.each([...])('desc', fn)
@@ -43,7 +43,9 @@ function is_it_call(node: CallExpression): boolean {
 /** Get the description string if first arg is a string literal, else null. */
 function get_description(node: CallExpression): string | null {
   const args = node.getArguments();
-  if (args.length === 0) {return null;}
+  if (args.length === 0) {
+    return null;
+  }
   const first = args[0];
   if (first.getKind() === SyntaxKind.StringLiteral) {
     // strip surrounding quotes
@@ -57,13 +59,15 @@ function get_description(node: CallExpression): string | null {
 function line_has_keyword(line: string, keyword: string): boolean {
   const t = line.trim();
   // JSDoc: " * Given ..."   Line comment: "// Given ..."
-  return t.startsWith('* ' + keyword) || t.startsWith('// ' + keyword);
+  return t.startsWith("* " + keyword) || t.startsWith("// " + keyword);
 }
 
 /** Check if comments before `position` contain Given / When / Then. */
 function has_bdd_comments(full_text: string, position: number): boolean {
   const ranges = ts.getLeadingCommentRanges(full_text, position);
-  if (!ranges || ranges.length === 0) {return false;}
+  if (!ranges || ranges.length === 0) {
+    return false;
+  }
 
   let has_given = false;
   let has_when = false;
@@ -71,10 +75,16 @@ function has_bdd_comments(full_text: string, position: number): boolean {
 
   for (const r of ranges) {
     const text = full_text.slice(r.pos, r.end);
-    for (const line of text.split('\n')) {
-      if (line_has_keyword(line, 'Given')) {has_given = true;}
-      if (line_has_keyword(line, 'When')) {has_when = true;}
-      if (line_has_keyword(line, 'Then')) {has_then = true;}
+    for (const line of text.split("\n")) {
+      if (line_has_keyword(line, "Given")) {
+        has_given = true;
+      }
+      if (line_has_keyword(line, "When")) {
+        has_when = true;
+      }
+      if (line_has_keyword(line, "Then")) {
+        has_then = true;
+      }
     }
   }
 
@@ -84,30 +94,43 @@ function has_bdd_comments(full_text: string, position: number): boolean {
 // ── Main ───────────────────────────────────────────────────────────────────
 
 const source_files = project.getSourceFiles().filter((f) => {
-  const p = f.getFilePath().replace(/\\/g, '/');
-  return p.includes('/src/') && p.endsWith('.test.ts');
+  const p = f.getFilePath().replace(/\\/g, "/");
+  return p.includes("/src/") && p.endsWith(".test.ts");
 });
 
 // Collect violations for reporting
-interface Violation { file: string; line: number; desc: string }
+interface Violation {
+  file: string;
+  line: number;
+  desc: string;
+}
 const violations: Violation[] = [];
 
 for (const sf of source_files) {
   const full_text = sf.getFullText();
-  const rel_path = sf.getFilePath().replace(/\\/g, '/').replace(CWD + '/', '');
+  const rel_path = sf
+    .getFilePath()
+    .replace(/\\/g, "/")
+    .replace(CWD + "/", "");
   const calls = sf.getDescendantsOfKind(SyntaxKind.CallExpression);
 
   for (const call of calls) {
-    if (!is_it_call(call)) {continue;}
+    if (!is_it_call(call)) {
+      continue;
+    }
 
     const desc = get_description(call);
-    if (desc === null) {continue;} // skip it.each([...]) inner calls etc.
+    if (desc === null) {
+      continue;
+    } // skip it.each([...]) inner calls etc.
 
     const pos = call.getPos();
-    const line = full_text.slice(0, pos).split('\n').length;
+    const line = full_text.slice(0, pos).split("\n").length;
 
     if (!has_bdd_comments(full_text, pos)) {
-      console.log(`[FAIL] ${rel_path}:${line}  it('${desc}') — missing BDD comment (Given/When/Then)`);
+      console.log(
+        `[FAIL] ${rel_path}:${line}  it('${desc}') — missing BDD comment (Given/When/Then)`
+      );
       violations.push({ file: rel_path, line, desc });
     }
   }
@@ -116,8 +139,7 @@ for (const sf of source_files) {
 // ── Report ─────────────────────────────────────────────────────────────────
 
 if (violations.length === 0) {
-  console.log('[PASS] All test files have proper BDD comments.');
+  console.log("[PASS] All test files have proper BDD comments.");
 }
 
 process.exit(violations.length > 0 ? 1 : 0);
-
