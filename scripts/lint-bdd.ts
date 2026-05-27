@@ -1,73 +1,128 @@
 #!/usr/bin/env tsx
 /**
- * lint-bdd.ts — Check all test files for BDD comment compliance.
+ * check-bdd-comments.ts — Check all test files for BDD comment compliance.
  *
  * Every `it()` call must have a preceding comment block containing
  * lines that start with "Given", "When", "Then".
  *
- * Usage: npx tsx tools/lint-bdd.ts
+ * Uses native ts.createSourceFile() instead of ts-morph for fast startup.
+ *
+ * Usage: npx tsx scripts/lint-bdd.ts
  */
 
-import type { CallExpression, PropertyAccessExpression } from "ts-morph";
-import { Project, SyntaxKind } from "ts-morph";
-import ts from "typescript";
+import * as fs from 'fs';
+import * as path from 'path';
+import * as ts from 'typescript';
 
-const project = new Project({ tsConfigFilePath: "tsconfig.json" });
-const CWD = process.cwd().replace(/\\/g, "/");
+const CWD = process.cwd();
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+// ── File discovery ─────────────────────────────────────────────────────────
 
-/** Is this CallExpression an `it(...)` family call? */
-function is_it_call(node: CallExpression): boolean {
-  const callee = node.getExpression();
-  const kind = callee.getKind();
+function collect_test_files(dir: string): string[] {
+  const results: string[] = [];
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      // skip node_modules
+      if (entry.name === 'node_modules') continue;
+      results.push(...collect_test_files(full));
+    } else if (entry.name.endsWith('.test.ts')) {
+      results.push(full);
+    }
+  }
+  return results;
+}
 
-  if (kind === SyntaxKind.Identifier) {
-    return callee.getText() === "it";
+// ── AST walk ───────────────────────────────────────────────────────────────
+
+type ItCall = {
+  pos: number;
+  desc: string | null;
+};
+
+/** Recursively visit all CallExpression nodes and collect `it()` calls. */
+function collect_it_calls(node: ts.Node, source_file: ts.SourceFile): ItCall[] {
+  const results: ItCall[] = [];
+
+  function walk(n: ts.Node): void {
+    if (ts.isCallExpression(n)) {
+      const desc = is_it_call(n);
+      if (desc !== false) {
+        results.push({ pos: n.pos, desc });
+      }
+    }
+    ts.forEachChild(n, walk);
   }
 
-  if (kind === SyntaxKind.PropertyAccessExpression) {
-    const prop = callee as PropertyAccessExpression;
-    const obj = prop.getExpression();
-    return obj.getKind() === SyntaxKind.Identifier && obj.getText() === "it";
+  walk(node);
+  return results;
+}
+
+/**
+ * Check if a CallExpression is an `it(...)` family call.
+ * Returns the description string if yes, false otherwise.
+ */
+function is_it_call(node: ts.CallExpression): string | false {
+  const callee = node.expression;
+
+  // it('desc', fn)
+  if (
+    ts.isIdentifier(callee) &&
+    callee.text === 'it'
+  ) {
+    return get_string_arg(node);
   }
 
-  // Handle it.each([...])('desc', fn)
-  if (kind === SyntaxKind.CallExpression) {
-    return is_it_call(callee as CallExpression);
+  // it.skip('desc', fn)
+  if (
+    ts.isPropertyAccessExpression(callee) &&
+    ts.isIdentifier(callee.expression) &&
+    callee.expression.text === 'it'
+  ) {
+    return get_string_arg(node);
+  }
+
+  // it.each([...])('desc', fn) / it.each``('desc', fn)
+  if (
+    ts.isCallExpression(callee) &&
+    ts.isPropertyAccessExpression(callee.expression) &&
+    ts.isIdentifier(callee.expression.expression) &&
+    callee.expression.expression.text === 'it'
+  ) {
+    return get_string_arg(node);
   }
 
   return false;
 }
 
-/** Get the description string if first arg is a string literal, else null. */
-function get_description(node: CallExpression): string | null {
-  const args = node.getArguments();
-  if (args.length === 0) {
-    return null;
-  }
+/** Extract first string literal argument from a call. */
+function get_string_arg(node: ts.CallExpression): string | null {
+  const args = node.arguments;
+  if (args.length === 0) return null;
   const first = args[0];
-  if (first.getKind() === SyntaxKind.StringLiteral) {
-    // strip surrounding quotes
-    const raw = first.getText();
-    return raw.slice(1, raw.length - 1);
+  if (ts.isStringLiteral(first)) {
+    return first.text;
+  }
+  // template literal like `desc`
+  if (ts.isNoSubstitutionTemplateLiteral(first)) {
+    return first.text;
   }
   return null;
 }
 
+// ── BDD comment check ──────────────────────────────────────────────────────
+
 /** Check if comment line contains a BDD keyword. */
 function line_has_keyword(line: string, keyword: string): boolean {
   const t = line.trim();
-  // JSDoc: " * Given ..."   Line comment: "// Given ..."
-  return t.startsWith("* " + keyword) || t.startsWith("// " + keyword);
+  return t.startsWith('* ' + keyword) || t.startsWith('// ' + keyword);
 }
 
 /** Check if comments before `position` contain Given / When / Then. */
 function has_bdd_comments(full_text: string, position: number): boolean {
   const ranges = ts.getLeadingCommentRanges(full_text, position);
-  if (!ranges || ranges.length === 0) {
-    return false;
-  }
+  if (!ranges || ranges.length === 0) return false;
 
   let has_given = false;
   let has_when = false;
@@ -75,16 +130,10 @@ function has_bdd_comments(full_text: string, position: number): boolean {
 
   for (const r of ranges) {
     const text = full_text.slice(r.pos, r.end);
-    for (const line of text.split("\n")) {
-      if (line_has_keyword(line, "Given")) {
-        has_given = true;
-      }
-      if (line_has_keyword(line, "When")) {
-        has_when = true;
-      }
-      if (line_has_keyword(line, "Then")) {
-        has_then = true;
-      }
+    for (const line of text.split('\n')) {
+      if (line_has_keyword(line, 'Given')) has_given = true;
+      if (line_has_keyword(line, 'When')) has_when = true;
+      if (line_has_keyword(line, 'Then')) has_then = true;
     }
   }
 
@@ -93,45 +142,45 @@ function has_bdd_comments(full_text: string, position: number): boolean {
 
 // ── Main ───────────────────────────────────────────────────────────────────
 
-const source_files = project.getSourceFiles().filter((f) => {
-  const p = f.getFilePath().replace(/\\/g, "/");
-  return p.includes("/src/") && p.endsWith(".test.ts");
-});
+const src_dir = path.join(CWD, 'src');
+const test_files = collect_test_files(src_dir);
 
-// Collect violations for reporting
 interface Violation {
   file: string;
   line: number;
   desc: string;
 }
 const violations: Violation[] = [];
+let total_it_calls = 0;
 
-for (const sf of source_files) {
-  const full_text = sf.getFullText();
-  const rel_path = sf
-    .getFilePath()
-    .replace(/\\/g, "/")
-    .replace(CWD + "/", "");
-  const calls = sf.getDescendantsOfKind(SyntaxKind.CallExpression);
+for (const file_path of test_files) {
+  const content = fs.readFileSync(file_path, 'utf-8');
+  const source_file = ts.createSourceFile(
+    file_path,
+    content,
+    ts.ScriptTarget.Latest,
+    false,
+  );
 
-  for (const call of calls) {
-    if (!is_it_call(call)) {
-      continue;
-    }
+  const rel_path = path.relative(CWD, file_path).replace(/\\/g, '/');
+  const it_calls = collect_it_calls(source_file, source_file);
+  total_it_calls += it_calls.length;
 
-    const desc = get_description(call);
-    if (desc === null) {
-      continue;
-    } // skip it.each([...]) inner calls etc.
+  for (const call of it_calls) {
+    if (call.desc === null) continue; // no description string
 
-    const pos = call.getPos();
-    const line = full_text.slice(0, pos).split("\n").length;
+    const line =
+      content.slice(0, call.pos).split('\n').length;
 
-    if (!has_bdd_comments(full_text, pos)) {
+    if (!has_bdd_comments(content, call.pos)) {
       console.log(
-        `[FAIL] ${rel_path}:${line}  it('${desc}') — missing BDD comment (Given/When/Then)`
+        `[FAIL] ${rel_path}:${line}  it('${call.desc}') — missing BDD comment (Given/When/Then)`,
       );
-      violations.push({ file: rel_path, line, desc });
+      violations.push({
+        file: rel_path,
+        line,
+        desc: call.desc,
+      });
     }
   }
 }
@@ -139,7 +188,10 @@ for (const sf of source_files) {
 // ── Report ─────────────────────────────────────────────────────────────────
 
 if (violations.length === 0) {
-  console.log("[PASS] All test files have proper BDD comments.");
+  console.log(`[PASS] All ${total_it_calls} test cases have proper BDD comments.`);
+} else {
+  console.log(`\n${violations.length} violation(s) found.`);
 }
 
 process.exit(violations.length > 0 ? 1 : 0);
+
